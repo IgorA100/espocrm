@@ -187,6 +187,21 @@ class Expression implements WhereItem
     }
 
     /**
+     * 'CASE' expression. Even arguments define 'WHEN' conditions, following odd arguments
+     * define 'THEN' values. The last unmatched argument defines 'ELSE'.
+     *
+     * @param Expression|scalar|null ...$arguments Arguments.
+     */
+    public static function switch(Expression|string|int|float|bool|null ...$arguments): self
+    {
+        if (count($arguments) < 2) {
+            throw new RuntimeException("Too few arguments.");
+        }
+
+        return self::composeFunction('SWITCH', ...$arguments);
+    }
+
+    /**
      * 'IFNULL' function. If the first argument is not NULL, returns it,
      * otherwise returns the second argument.
      *
@@ -596,7 +611,7 @@ class Expression implements WhereItem
     public static function add(Expression|int|float ...$arguments): self
     {
         if (count($arguments) < 2) {
-            throw new RuntimeException("Too few arguments");
+            throw new RuntimeException("Too few arguments.");
         }
 
         return self::composeFunction('ADD', ...$arguments);
@@ -610,7 +625,7 @@ class Expression implements WhereItem
     public static function subtract(Expression|int|float ...$arguments): self
     {
         if (count($arguments) < 2) {
-            throw new RuntimeException("Too few arguments");
+            throw new RuntimeException("Too few arguments.");
         }
 
         return self::composeFunction('SUB', ...$arguments);
@@ -624,7 +639,7 @@ class Expression implements WhereItem
     public static function multiply(Expression|int|float ...$arguments): self
     {
         if (count($arguments) < 2) {
-            throw new RuntimeException("Too few arguments");
+            throw new RuntimeException("Too few arguments.");
         }
 
         return self::composeFunction('MUL', ...$arguments);
@@ -638,7 +653,7 @@ class Expression implements WhereItem
     public static function divide(Expression|int|float ...$arguments): self
     {
         if (count($arguments) < 2) {
-            throw new RuntimeException("Too few arguments");
+            throw new RuntimeException("Too few arguments.");
         }
 
         return self::composeFunction('DIV', ...$arguments);
@@ -652,7 +667,7 @@ class Expression implements WhereItem
     public static function modulo(Expression|int|float ...$arguments): self
     {
         if (count($arguments) < 2) {
-            throw new RuntimeException("Too few arguments");
+            throw new RuntimeException("Too few arguments.");
         }
 
         return self::composeFunction('MOD', ...$arguments);
