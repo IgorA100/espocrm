@@ -1,3 +1,4 @@
+<?php
 /************************************************************************
  * This file is part of EspoCRM.
  *
@@ -26,18 +27,43 @@
  * these Appropriate Legal Notices must retain the display of the "EspoCRM" word.
  ************************************************************************/
 
-define('views/admin/field-manager/fields/source-list', ['views/fields/multi-enum'], function (Dep) {
+namespace Espo\Core\Formula\Functions\RecordGroup;
 
-    return Dep.extend({
+use Espo\Core\Formula\EvaluatedArgumentList;
+use Espo\Core\Formula\Exceptions\BadArgumentType;
+use Espo\Core\Formula\Exceptions\TooFewArguments;
+use Espo\Core\Formula\Func;
+use Espo\ORM\EntityManager;
 
-        setupOptions: function () {
-            this.params.options = Espo.Utils.clone(this.getMetadata().get('entityDefs.Attachment.sourceList') || []);
+class DeleteType implements Func
+{
+    public function __construct(private EntityManager $entityManager) {}
 
-            this.translatedOptions = {};
-
-            this.params.options.forEach(item => {
-                this.translatedOptions[item] = this.translate(item, 'scopeNamesPlural');
-            });
+    public function process(EvaluatedArgumentList $arguments): mixed
+    {
+        if (count($arguments) < 2) {
+            throw TooFewArguments::create(2);
         }
-    });
-});
+
+        $entityType = $arguments[0];
+        $id = $arguments[1];
+
+        if (!is_string($entityType)) {
+            throw BadArgumentType::create(1, 'string');
+        }
+
+        if (!is_string($id)) {
+            throw BadArgumentType::create(2, 'string');
+        }
+
+        $entity = $this->entityManager->getEntityById($entityType, $id);
+
+        if (!$entity) {
+            return null;
+        }
+
+        $this->entityManager->removeEntity($entity);
+
+        return null;
+    }
+}
