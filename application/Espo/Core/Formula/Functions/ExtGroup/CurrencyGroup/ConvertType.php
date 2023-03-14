@@ -27,46 +27,53 @@
  * these Appropriate Legal Notices must retain the display of the "EspoCRM" word.
  ************************************************************************/
 
-namespace Espo\Tools\Kanban;
+namespace Espo\Core\Formula\Functions\ExtGroup\CurrencyGroup;
 
-use Espo\Core\ORM\EntityManager;
-use Espo\Core\Utils\Id\RecordIdGenerator;
-use Espo\Core\Utils\Metadata;
+use Espo\Core\Currency\ConfigDataProvider;
+use Espo\Core\Currency\Converter;
+use Espo\Core\Field\Currency;
+use Espo\Core\Formula\EvaluatedArgumentList;
+use Espo\Core\Formula\Exceptions\BadArgumentType;
+use Espo\Core\Formula\Exceptions\TooFewArguments;
+use Espo\Core\Formula\Func;
 
-class Orderer
+class ConvertType implements Func
 {
     public function __construct(
-        private EntityManager $entityManager,
-        private Metadata $metadata,
-        private RecordIdGenerator $idGenerator
+        private ConfigDataProvider $configDataProvider,
+        private Converter $converter
     ) {}
 
-    public function setEntityType(string $entityType): OrdererProcessor
+    public function process(EvaluatedArgumentList $arguments): string
     {
-        return $this->createProcessor()->setEntityType($entityType);
-    }
+        if (count($arguments) < 2) {
+            throw TooFewArguments::create(2);
+        }
 
-    public function setGroup(string $group): OrdererProcessor
-    {
-        return $this->createProcessor()->setGroup($group);
-    }
+        $amount = $arguments[0];
+        $fromCode = $arguments[1];
+        $toCode = $arguments[2] ?? $this->configDataProvider->getDefaultCurrency();
 
-    public function setUserId(string $userId): OrdererProcessor
-    {
-        return $this->createProcessor()->setUserId($userId);
-    }
+        if (
+            !is_string($amount) &&
+            !is_int($amount) &&
+            !is_float($amount)
+        ) {
+            throw BadArgumentType::create(1, 'int|float|string');
+        }
 
-    public function setMaxNumber(?int $maxNumber): OrdererProcessor
-    {
-        return $this->createProcessor()->setMaxNumber($maxNumber);
-    }
+        if (!is_string($fromCode)) {
+            throw BadArgumentType::create(2, 'string');
+        }
 
-    public function createProcessor(): OrdererProcessor
-    {
-        return new OrdererProcessor(
-            $this->entityManager,
-            $this->metadata,
-            $this->idGenerator
-        );
+        if (!is_string($toCode)) {
+            throw BadArgumentType::create(3, 'string');
+        }
+
+        $value = Currency::create($amount, $fromCode);
+
+        $convertedValue = $this->converter->convert($value, $toCode);
+
+        return $convertedValue->getAmountAsString();
     }
 }

@@ -96,18 +96,51 @@ abstract class BaseQueryComposer implements QueryComposer
 
     protected const EXISTS_OPERATOR = 'EXISTS';
 
+    /** @var string[] */
+    private array $comparisonOperators = [
+        '!=s',
+        '=s',
+        '!=',
+        '!*',
+        '*',
+        '>=',
+        '<=',
+        '>',
+        '<',
+        '=',
+        '>=any',
+        '<=any',
+        '>any',
+        '<any',
+        '!=any',
+        '=any',
+        '>=all',
+        '<=all',
+        '>all',
+        '<all',
+        '!=all',
+        '=all',
+    ];
+
     /** @var array<string, string> */
-    protected array $comparisonOperators = [
+    protected array $comparisonOperatorMap = [
         '!=s' => 'NOT IN',
         '=s' => 'IN',
         '!=' => '<>',
         '!*' => 'NOT LIKE',
         '*' => 'LIKE',
-        '>=' => '>=',
-        '<=' => '<=',
-        '>' => '>',
-        '<' => '<',
-        '=' => '=',
+        '>=any' => '>= ANY',
+        '<=any' => '<= ANY',
+        '>any' => '> ANY',
+        '<any' => '< ANY',
+        '!=any' => '<> ANY',
+        '=any' => '= ANY',
+        '>=all' => '>= ALL',
+        '<=all' => '<= ALL',
+        '>all' => '> ALL',
+        '<all' => '< ALL',
+        '!=all' => '<> ALL',
+        '=all' => '= ALL',
     ];
 
     /** @var array<string, string> */
@@ -957,6 +990,30 @@ abstract class BaseQueryComposer implements QueryComposer
                 }
 
                 $part = "CASE";
+
+                for ($i = 0; $i < floor(count($argumentPartList) / 2); $i++) {
+                    $whenPart = $argumentPartList[$i * 2];
+                    $thenPart = $argumentPartList[$i * 2 + 1];
+
+                    $part .= " WHEN {$whenPart} THEN {$thenPart}";
+                }
+
+                if (count($argumentPartList) % 2) {
+                    $part .= " ELSE " . end($argumentPartList);
+                }
+
+                $part .= " END";
+
+                return $part;
+
+            case 'MAP':
+                if (count($argumentPartList) < 3) {
+                    throw new RuntimeException("Not enough arguments for MAP function.");
+                }
+
+                $part = "CASE " . $argumentPartList[0];
+
+                array_shift($argumentPartList);
 
                 for ($i = 0; $i < floor(count($argumentPartList) / 2); $i++) {
                     $whenPart = $argumentPartList[$i * 2];
@@ -2351,6 +2408,30 @@ abstract class BaseQueryComposer implements QueryComposer
     }
 
     /**
+     * @return array{string, string, string}
+     */
+    private function splitWhereLeftItem(string $item): array
+    {
+        if (preg_match('/^[a-z0-9]+$/i', $item)) {
+            return [$item, '=', '='];
+        }
+
+        foreach ($this->comparisonOperators as $operator) {
+            $sqlOperator = $this->comparisonOperatorMap[$operator] ?? $operator;
+
+            if (!str_ends_with($item, $operator)) {
+                continue;
+            }
+
+            $expression = trim(substr($item, 0, -strlen($operator)));
+
+            return [$expression, $sqlOperator, $operator];
+        }
+
+        return [$item, '=', '='];
+    }
+
+    /**
      * @param array<string, mixed> $params
      */
     protected function getWherePartItem(
@@ -2391,12 +2472,12 @@ abstract class BaseQueryComposer implements QueryComposer
         }
 
         if ($field === self::EXISTS_OPERATOR) {
-            if ($value instanceof Select) {
-                $subQueryPart = $this->composeSelect($value);
-            }
-            else {
+            if (!$value instanceof Select) {
                 throw new RuntimeException("Bad EXISTS usage in where-clause.");
+
             }
+
+            $subQueryPart = $this->composeSelect($value);
 
             return "EXISTS ({$subQueryPart})";
         }
@@ -2410,21 +2491,7 @@ abstract class BaseQueryComposer implements QueryComposer
             $isNotValue = true;
         }
 
-        $operator = '=';
-        $operatorOrm = '=';
-
-        if (!preg_match('/^[a-z0-9]+$/i', $field)) {
-            foreach ($this->comparisonOperators as $op => $opDb) {
-                if (str_ends_with($field, $op)) {
-                    $field = trim(substr($field, 0, -strlen($op)));
-
-                    $operatorOrm = $op;
-                    $operator = $opDb;
-
-                    break;
-                }
-            }
-        }
+        [$field, $operator, $operatorOrm] = $this->splitWhereLeftItem($field);
 
         $leftPart = null;
 
@@ -2463,7 +2530,6 @@ abstract class BaseQueryComposer implements QueryComposer
             return $this->quote(false);
         }
 
-        // @todo Operators (<s, >s, <=s, =>s) producing 'operator ANY (sub-query)'.
         if ($operatorOrm === '=s' || $operatorOrm === '!=s') {
             if ($value instanceof Select) {
                 $subSql = $this->composeSelect($value);
@@ -2504,6 +2570,10 @@ abstract class BaseQueryComposer implements QueryComposer
             $subQueryPart = $this->composeSelect($value);
 
             return "{$leftPart} {$operator} ({$subQueryPart})";
+        }
+
+        if (str_ends_with($operatorOrm, 'any') || str_ends_with($operatorOrm, 'all')) {
+            throw new RuntimeException("ANY/ALL operators can be used only with sub-query.");
         }
 
         if ($value instanceof Expression) {
@@ -2946,8 +3016,6 @@ abstract class BaseQueryComposer implements QueryComposer
             return $sql;
         }
 
-        $operator = '=';
-
         $isNotValue = false;
         $isComplex = false;
 
@@ -2956,16 +3024,7 @@ abstract class BaseQueryComposer implements QueryComposer
             $isNotValue = true;
         }
 
-        if (!preg_match('/^[a-z0-9]+$/i', $left)) {
-            foreach ($this->comparisonOperators as $op => $opDb) {
-                if (str_ends_with($left, $op)) {
-                    $left = trim(substr($left, 0, -strlen($op)));
-                    $operator = $opDb;
-
-                    break;
-                }
-            }
-        }
+        [$left, $operator] = $this->splitWhereLeftItem($left);
 
         if (Util::isComplexExpression($left)) {
             $isComplex = true;
